@@ -77,21 +77,19 @@ const fetchRealMarketPrice = async (cropKey) => {
     })
 
     console.log(`[v0] Data.gov.in API response status:`, response.status)
-    console.log(`[v0] Data.gov.in API response:`, JSON.stringify(response.data).substring(0, 300))
 
     if (!response.data || !response.data.records || response.data.records.length === 0) {
       console.log(`[v0] No records found for ${commodityName}`)
       return null
     }
 
-    // Process the API response
     const records = response.data.records
     console.log(`[v0] Found ${records.length} records for ${commodityName}`)
 
-    // Calculate average prices from different markets
+    // Calculate average prices - API returns per quintal, convert to per kg
     const prices = records
       .filter((r) => r.modal_price && !isNaN(Number.parseFloat(r.modal_price)))
-      .map((r) => Number.parseFloat(r.modal_price))
+      .map((r) => Math.round(Number.parseFloat(r.modal_price) / 100)) // Convert quintal to kg
 
     if (prices.length === 0) {
       console.log(`[v0] No valid prices found for ${commodityName}`)
@@ -108,8 +106,8 @@ const fetchRealMarketPrice = async (cropKey) => {
       .filter((r) => r.market && r.modal_price)
       .map((r) => ({
         city: r.market,
-        price: Number.parseFloat(r.modal_price),
-        demand: "medium", // Default as API doesn't provide this
+        price: Math.round(Number.parseFloat(r.modal_price) / 100), // Convert to per kg
+        demand: "medium",
       }))
 
     // Determine trend based on price variation
@@ -143,15 +141,29 @@ const fetchRealMarketPrice = async (cropKey) => {
 }
 
 const generateMockPrice = (cropKey) => {
-  const basePrice = 100 + Math.random() * 200
-  const variation = (Math.random() - 0.5) * 30
-  const currentPrice = Math.round(basePrice + variation)
+  // Realistic base prices for Indian crops (per kg)
+  const basePrices = {
+    rice: 25,
+    wheat: 22,
+    maize: 18,
+    cotton: 45,
+    sugarcane: 3, // per kg (sold in bulk)
+    potato: 15,
+    tomato: 30,
+    onion: 20,
+    soybean: 35,
+    groundnut: 48,
+  }
+
+  const basePrice = basePrices[cropKey] || 25
+  const variation = (Math.random() - 0.5) * 10 // ±5 Rs variation
+  const currentPrice = Math.max(10, Math.round(basePrice + variation)) // Minimum 10 Rs
 
   return {
     cropType: cropKey,
     price: {
       current: currentPrice,
-      min30Days: Math.round(currentPrice * 0.85),
+      min30Days: Math.max(8, Math.round(currentPrice * 0.85)),
       max30Days: Math.round(currentPrice * 1.15),
       average30Days: Math.round(currentPrice * 0.95),
     },
@@ -159,8 +171,8 @@ const generateMockPrice = (cropKey) => {
     supply: ["high", "medium", "low"][Math.floor(Math.random() * 3)],
     trend: ["up", "down", "stable"][Math.floor(Math.random() * 3)],
     topMarkets: getDefaultMarkets(currentPrice),
-    forecastNextWeek: Math.round(currentPrice * (0.9 + Math.random() * 0.2)),
-    forecastNextMonth: Math.round(currentPrice * (0.85 + Math.random() * 0.3)),
+    forecastNextWeek: Math.max(8, Math.round(currentPrice * (0.9 + Math.random() * 0.2))),
+    forecastNextMonth: Math.max(8, Math.round(currentPrice * (0.85 + Math.random() * 0.3))),
     lastUpdated: new Date(),
     source: "mock",
   }

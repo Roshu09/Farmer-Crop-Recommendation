@@ -4,9 +4,17 @@ import User from "../models/User.js" // Import User model
 
 export const createFarm = async (req, res, next) => {
   try {
+    console.log("[v0] Create farm request body:", req.body)
+    console.log("[v0] User ID:", req.user.id)
+
     const { name, city, state, latitude, longitude, size, soilType, soilData } = req.body
 
+    if (!name || !size) {
+      return res.status(400).json({ error: "Farm name and size are required" })
+    }
+
     const user = await User.findById(req.user.id)
+    console.log("[v0] User found:", user?.email)
 
     const farm = new Farm({
       userId: req.user.id,
@@ -20,16 +28,26 @@ export const createFarm = async (req, res, next) => {
         },
       },
       size,
-      soilData: soilData || { soilType },
+      soilData: soilData
+        ? {
+            nitrogen: soilData.nitrogen,
+            phosphorus: soilData.phosphorus,
+            potassium: soilData.potassium,
+            pH: soilData.pH,
+            soilType: soilType || soilData.soilType,
+          }
+        : { soilType },
     })
 
     await farm.save()
+    console.log("[v0] Farm saved successfully:", farm._id)
 
     // Update user's farmId
     await User.findByIdAndUpdate(req.user.id, { farmId: farm._id })
 
     res.status(201).json({ message: "Farm created successfully", farm })
   } catch (error) {
+    console.error("[v0] Create farm error:", error)
     next(error)
   }
 }
@@ -146,7 +164,7 @@ export const getDashboardData = async (req, res, next) => {
     console.log("[v0] Dashboard request - User ID:", req.user.id)
 
     const farm = await Farm.findOne({ userId: req.user.id })
-    console.log("[v0] Farm found:", farm)
+    console.log("[v0] Farm found:", farm ? "Yes" : "No")
 
     const crops = farm ? await FarmCrop.find({ farmId: farm._id }) : []
     const totalCrops = crops.length
@@ -161,12 +179,21 @@ export const getDashboardData = async (req, res, next) => {
       rainfall: 0,
     }
 
-    const soilData = farm?.soilData || {
-      nitrogen: 150,
-      phosphorus: 60,
-      potassium: 200,
-      pH: 7,
-    }
+    const soilData = farm?.soilData
+      ? {
+          nitrogen: farm.soilData.nitrogen || 150,
+          phosphorus: farm.soilData.phosphorus || 60,
+          potassium: farm.soilData.potassium || 200,
+          pH: farm.soilData.pH || 7,
+        }
+      : {
+          nitrogen: 150,
+          phosphorus: 60,
+          potassium: 200,
+          pH: 7,
+        }
+
+    console.log("[v0] Soil data being sent:", soilData)
 
     const response = {
       dashboard: {
@@ -178,10 +205,11 @@ export const getDashboardData = async (req, res, next) => {
         weather,
         soilData,
         recentCrops: crops.slice(-3),
+        hasFarm: !!farm,
       },
     }
 
-    console.log("[v0] Sending dashboard response:", response)
+    console.log("[v0] Sending dashboard response")
     res.json(response)
   } catch (error) {
     console.error("[v0] Dashboard error:", error)

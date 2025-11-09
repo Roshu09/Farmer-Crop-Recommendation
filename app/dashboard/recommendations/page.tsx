@@ -6,6 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button"
 import { AlertCircle, CheckCircle, Loader, TrendingUp, Search } from "lucide-react"
 import { Input } from "@/components/ui/input"
+import { PieChart, Pie, Cell, ResponsiveContainer, Legend, Tooltip as RechartsTooltip } from "recharts"
 
 interface Recommendation {
   id: string
@@ -41,6 +42,11 @@ export default function Recommendations() {
   const fetchRecommendations = async () => {
     const token = localStorage.getItem("token")
     try {
+      console.log(
+        "[v0] Fetching recommendations from:",
+        `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000"}/api/recommendations`,
+      )
+
       const response = await fetch(
         `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000"}/api/recommendations`,
         {
@@ -48,14 +54,20 @@ export default function Recommendations() {
         },
       )
 
-      if (!response.ok) throw new Error("Failed to fetch recommendations")
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ error: "Unknown error" }))
+        console.error("[v0] Recommendation fetch failed:", response.status, errorData)
+        throw new Error(errorData.error || errorData.message || "Failed to fetch recommendations")
+      }
 
       const data = await response.json()
+      console.log("[v0] Recommendations received:", data.recommendations?.length || 0)
       setRecommendations(data.recommendations)
       setFilteredRecommendations(data.recommendations)
-    } catch (err) {
-      setError("Failed to load recommendations")
-      console.error(err)
+    } catch (err: any) {
+      const errorMessage = err.message || "Failed to load recommendations"
+      setError(errorMessage)
+      console.error("[v0] Recommendation error:", err)
     } finally {
       setLoading(false)
     }
@@ -109,98 +121,144 @@ export default function Recommendations() {
                 </CardContent>
               </Card>
             ) : (
-              <div className="space-y-4">
-                {filteredRecommendations.map((rec) => (
-                  <Card key={rec.id} className="hover:shadow-md transition-shadow overflow-hidden">
-                    <CardHeader className="pb-3">
-                      <div className="flex items-start justify-between">
-                        <div className="flex-1">
-                          <CardTitle className="text-xl">{rec.cropName}</CardTitle>
-                          <CardDescription>{rec.reason}</CardDescription>
-                        </div>
-                        <div className="text-right">
-                          <div className="text-2xl font-bold text-primary">{rec.suitability}%</div>
-                          <div className="text-xs text-muted-foreground">Suitability</div>
-                        </div>
-                      </div>
-                    </CardHeader>
-
-                    <CardContent className="space-y-4">
-                      {/* Suitability Bar */}
-                      <div className="space-y-2">
-                        <div className="flex justify-between text-sm">
-                          <span className="font-medium">Suitability Score</span>
-                          <span className="text-muted-foreground">{rec.suitability}%</span>
-                        </div>
-                        <div className="w-full bg-muted rounded-full h-2 overflow-hidden">
-                          <div
-                            className="bg-primary h-full rounded-full transition-all"
-                            style={{ width: `${rec.suitability}%` }}
+              <>
+                {/* Pie Chart showing crop suitability distribution */}
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Crop Suitability Distribution</CardTitle>
+                    <CardDescription>Visual breakdown of recommended crops by suitability percentage</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="h-80">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <PieChart>
+                          <Pie
+                            data={filteredRecommendations.map((rec) => ({
+                              name: rec.cropName,
+                              value: rec.suitability,
+                            }))}
+                            cx="50%"
+                            cy="50%"
+                            labelLine={false}
+                            label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
+                            outerRadius={100}
+                            fill="#8884d8"
+                            dataKey="value"
+                          >
+                            {filteredRecommendations.map((entry, index) => {
+                              const colors = ["#10b981", "#3b82f6", "#f59e0b", "#ef4444", "#8b5cf6", "#ec4899"]
+                              return <Cell key={`cell-${index}`} fill={colors[index % colors.length]} />
+                            })}
+                          </Pie>
+                          <RechartsTooltip
+                            contentStyle={{
+                              backgroundColor: "#fff",
+                              border: "1px solid #ccc",
+                              borderRadius: "8px",
+                              padding: "10px",
+                            }}
                           />
-                        </div>
-                      </div>
+                          <Legend />
+                        </PieChart>
+                      </ResponsiveContainer>
+                    </div>
+                  </CardContent>
+                </Card>
 
-                      {/* Benefits */}
-                      {rec.benefits.length > 0 && (
-                        <div>
-                          <h4 className="font-semibold text-sm mb-2 flex items-center gap-2">
-                            <CheckCircle className="w-4 h-4 text-green-600" />
-                            Benefits
-                          </h4>
-                          <ul className="space-y-1 text-sm">
-                            {rec.benefits.map((benefit, idx) => (
-                              <li key={idx} className="text-muted-foreground">
-                                • {benefit}
-                              </li>
-                            ))}
-                          </ul>
+                {/* Recommendation Cards */}
+                <div className="space-y-4">
+                  {filteredRecommendations.map((rec) => (
+                    <Card key={rec.id} className="hover:shadow-md transition-shadow overflow-hidden">
+                      <CardHeader className="pb-3">
+                        <div className="flex items-start justify-between">
+                          <div className="flex-1">
+                            <CardTitle className="text-xl">{rec.cropName}</CardTitle>
+                            <CardDescription>{rec.reason}</CardDescription>
+                          </div>
+                          <div className="text-right">
+                            <div className="text-2xl font-bold text-primary">{rec.suitability}%</div>
+                            <div className="text-xs text-muted-foreground">Suitability</div>
+                          </div>
                         </div>
-                      )}
+                      </CardHeader>
 
-                      {/* Risk Factors */}
-                      {rec.riskFactors.length > 0 && (
-                        <div>
-                          <h4 className="font-semibold text-sm mb-2 flex items-center gap-2">
-                            <AlertCircle className="w-4 h-4 text-amber-600" />
-                            Risk Factors
-                          </h4>
-                          <ul className="space-y-1 text-sm">
-                            {rec.riskFactors.map((risk, idx) => (
-                              <li key={idx} className="text-muted-foreground">
-                                • {risk}
-                              </li>
-                            ))}
-                          </ul>
+                      <CardContent className="space-y-4">
+                        {/* Suitability Bar */}
+                        <div className="space-y-2">
+                          <div className="flex justify-between text-sm">
+                            <span className="font-medium">Suitability Score</span>
+                            <span className="text-muted-foreground">{rec.suitability}%</span>
+                          </div>
+                          <div className="w-full bg-muted rounded-full h-2 overflow-hidden">
+                            <div
+                              className="bg-primary h-full rounded-full transition-all"
+                              style={{ width: `${rec.suitability}%` }}
+                            />
+                          </div>
                         </div>
-                      )}
 
-                      {/* Stats */}
-                      <div className="grid grid-cols-2 gap-4 pt-3 border-t border-border">
-                        <div>
-                          <p className="text-xs text-muted-foreground mb-1">Estimated Yield</p>
-                          <p className="font-semibold text-foreground">{rec.estimatedYield}</p>
-                        </div>
-                        <div>
-                          <p className="text-xs text-muted-foreground mb-1">Market Price</p>
-                          <p className="font-semibold text-foreground flex items-center gap-1">
-                            <TrendingUp className="w-4 h-4 text-primary" />₹{rec.marketPrice}/kg
-                          </p>
-                        </div>
-                      </div>
+                        {/* Benefits */}
+                        {rec.benefits.length > 0 && (
+                          <div>
+                            <h4 className="font-semibold text-sm mb-2 flex items-center gap-2">
+                              <CheckCircle className="w-4 h-4 text-green-600" />
+                              Benefits
+                            </h4>
+                            <ul className="space-y-1 text-sm">
+                              {rec.benefits.map((benefit, idx) => (
+                                <li key={idx} className="text-muted-foreground">
+                                  • {benefit}
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
 
-                      {/* Action Buttons */}
-                      <div className="flex gap-2 pt-2">
-                        <Button size="sm" className="flex-1 bg-primary hover:bg-primary/90">
-                          Plan Cultivation
-                        </Button>
-                        <Button size="sm" variant="outline" className="flex-1 bg-transparent">
-                          Learn More
-                        </Button>
-                      </div>
-                    </CardContent>
-                  </Card>
-                ))}
-              </div>
+                        {/* Risk Factors */}
+                        {rec.riskFactors.length > 0 && (
+                          <div>
+                            <h4 className="font-semibold text-sm mb-2 flex items-center gap-2">
+                              <AlertCircle className="w-4 h-4 text-amber-600" />
+                              Risk Factors
+                            </h4>
+                            <ul className="space-y-1 text-sm">
+                              {rec.riskFactors.map((risk, idx) => (
+                                <li key={idx} className="text-muted-foreground">
+                                  • {risk}
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+
+                        {/* Stats */}
+                        <div className="grid grid-cols-2 gap-4 pt-3 border-t border-border">
+                          <div>
+                            <p className="text-xs text-muted-foreground mb-1">Estimated Yield</p>
+                            <p className="font-semibold text-foreground">{rec.estimatedYield}</p>
+                          </div>
+                          <div>
+                            <p className="text-xs text-muted-foreground mb-1">Market Price</p>
+                            <p className="font-semibold text-foreground flex items-center gap-1">
+                              <TrendingUp className="w-4 h-4 text-primary" />₹{rec.marketPrice}/kg
+                            </p>
+                          </div>
+                        </div>
+
+                        {/* Action Buttons */}
+                        <div className="flex gap-2 pt-2">
+                          <Button size="sm" className="flex-1 bg-primary hover:bg-primary/90">
+                            Plan Cultivation
+                          </Button>
+                          <Button size="sm" variant="outline" className="flex-1 bg-transparent">
+                            Learn More
+                          </Button>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+              </>
             )}
           </>
         )}

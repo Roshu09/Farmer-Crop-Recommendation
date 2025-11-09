@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react"
 import DashboardLayout from "@/components/dashboard-layout"
-import { Card, CardContent } from "@/components/ui/card"
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Cloud, Droplets, Wind, Sun, AlertCircle, Loader, MapPin } from "lucide-react"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -16,6 +16,8 @@ import {
 } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Line } from "recharts"
+import { LineChart, ResponsiveContainer, XAxis, YAxis, Tooltip, CartesianGrid } from "recharts"
 
 const INDIAN_STATES = {
   "Uttar Pradesh": ["Kanpur", "Lucknow", "Agra", "Varanasi", "Meerut"],
@@ -68,9 +70,19 @@ export default function Dashboard() {
     ph: "",
   })
 
+  const [weatherHistory, setWeatherHistory] = useState<Array<{ time: string; temp: number; humidity: number }>>([])
+
   useEffect(() => {
     fetchDashboardData()
-  }, [])
+
+    const interval = setInterval(() => {
+      if (weatherLocation) {
+        fetchWeatherForLocation(weatherLocation)
+      }
+    }, 5000) // Changed from 2 seconds to 5 seconds
+
+    return () => clearInterval(interval)
+  }, [weatherLocation])
 
   useEffect(() => {
     if (selectedState && selectedDistrict) {
@@ -141,6 +153,20 @@ export default function Dashboard() {
         const data = await response.json()
         setWeather(data.weather)
         setWeatherLocation(city)
+
+        const now = new Date()
+        const timeString = `${now.getHours()}:${now.getMinutes().toString().padStart(2, "0")}`
+        setWeatherHistory((prev) => {
+          const newHistory = [
+            ...prev,
+            {
+              time: timeString,
+              temp: data.weather.temperature,
+              humidity: data.weather.humidity,
+            },
+          ]
+          return newHistory.slice(-20)
+        })
       }
     } catch (err) {
       console.error("Failed to fetch weather for location:", err)
@@ -164,21 +190,22 @@ export default function Dashboard() {
             nitrogen: Number(farmData.nitrogen),
             phosphorus: Number(farmData.phosphorus),
             potassium: Number(farmData.potassium),
-            ph: Number(farmData.ph),
+            pH: Number(farmData.ph),
           },
         }),
       })
 
       if (response.ok) {
         setShowFarmDialog(false)
-        fetchDashboardData()
+        await fetchDashboardData()
+        alert("Farm created successfully!")
       } else {
         const error = await response.json()
         alert(error.error || "Failed to create farm")
       }
     } catch (err) {
-      console.error("Failed to create farm:", err)
-      alert("Failed to create farm")
+      console.error("[v0] Failed to create farm:", err)
+      alert("Failed to create farm. Please check your connection.")
     }
   }
 
@@ -276,8 +303,11 @@ export default function Dashboard() {
                       unit: "km/h",
                     },
                   ].map((item) => (
-                    <Card key={item.label} className="bg-background hover:shadow-md transition-shadow">
-                      <CardContent className="p-6">
+                    <Card
+                      key={item.label}
+                      className="bg-background hover:shadow-md transition-shadow relative overflow-hidden"
+                    >
+                      <CardContent className="p-6 relative z-10">
                         <div className="flex items-start justify-between">
                           <div>
                             <p className="text-sm text-muted-foreground mb-1">{item.label}</p>
@@ -289,9 +319,96 @@ export default function Dashboard() {
                           <item.icon className="w-8 h-8 text-primary" />
                         </div>
                       </CardContent>
+
+                      {item.label === "Condition" && (
+                        <div className="absolute inset-0 pointer-events-none overflow-hidden">
+                          <div className="absolute top-0 right-0 w-32 h-32 bg-gray-300/20 rounded-full blur-2xl animate-pulse" />
+                          <div className="absolute bottom-0 right-0 w-24 h-24 bg-gray-400/15 rounded-full blur-xl animate-pulse delay-150" />
+                        </div>
+                      )}
+
+                      {item.label === "Temperature" && (
+                        <div className="absolute inset-0 pointer-events-none overflow-hidden">
+                          <div
+                            className={`absolute top-0 right-0 w-32 h-32 rounded-full blur-3xl animate-pulse ${
+                              weather.temperature > 30 ? "bg-orange-300/25" : "bg-blue-300/25"
+                            }`}
+                          />
+                        </div>
+                      )}
+
+                      {item.label === "Humidity" && (
+                        <div className="absolute inset-0 pointer-events-none overflow-hidden">
+                          <div
+                            className="absolute top-0 right-0 w-28 h-28 bg-blue-300/20 rounded-full blur-2xl animate-bounce"
+                            style={{ animationDuration: "3s" }}
+                          />
+                          <div
+                            className="absolute bottom-4 right-4 w-16 h-16 bg-cyan-300/15 rounded-full blur-xl animate-bounce delay-300"
+                            style={{ animationDuration: "2.5s" }}
+                          />
+                        </div>
+                      )}
+
+                      {item.label === "Wind Speed" && (
+                        <div className="absolute inset-0 pointer-events-none overflow-hidden">
+                          <div
+                            className="absolute top-1/2 right-0 w-40 h-2 bg-green-300/20 blur-sm animate-pulse"
+                            style={{ transform: "translateY(-50%) skewY(-10deg)" }}
+                          />
+                          <div
+                            className="absolute top-1/3 right-0 w-32 h-2 bg-green-200/15 blur-sm animate-pulse delay-150"
+                            style={{ transform: "translateY(-50%) skewY(-10deg)" }}
+                          />
+                        </div>
+                      )}
                     </Card>
                   ))}
               </div>
+
+              {/* Live Weather Fluctuation Graph */}
+              {weatherHistory.length > 1 && (
+                <Card className="mt-4">
+                  <CardHeader>
+                    <CardTitle>Weather Trend (Live)</CardTitle>
+                    <CardDescription>Real-time temperature and humidity tracking</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="h-64">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <LineChart data={weatherHistory}>
+                          <CartesianGrid strokeDasharray="3 3" stroke="#e0e0e0" />
+                          <XAxis dataKey="time" stroke="#666" style={{ fontSize: "12px" }} />
+                          <YAxis stroke="#666" style={{ fontSize: "12px" }} />
+                          <Tooltip
+                            contentStyle={{
+                              backgroundColor: "#fff",
+                              border: "1px solid #ccc",
+                              borderRadius: "8px",
+                            }}
+                          />
+                          <Line
+                            type="monotone"
+                            dataKey="temp"
+                            stroke="#10b981"
+                            strokeWidth={2}
+                            name="Temperature (°C)"
+                            dot={{ fill: "#10b981", r: 3 }}
+                          />
+                          <Line
+                            type="monotone"
+                            dataKey="humidity"
+                            stroke="#3b82f6"
+                            strokeWidth={2}
+                            name="Humidity (%)"
+                            dot={{ fill: "#3b82f6", r: 3 }}
+                          />
+                        </LineChart>
+                      </ResponsiveContainer>
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
             </div>
 
             {/* Soil Analysis */}
@@ -355,7 +472,10 @@ export default function Dashboard() {
                     <p className="text-sm text-muted-foreground">
                       View AI-powered crop suggestions based on your current conditions
                     </p>
-                    <Button className="w-full bg-primary hover:bg-primary/90 text-primary-foreground">
+                    <Button
+                      className="w-full bg-primary hover:bg-primary/90 text-primary-foreground"
+                      onClick={() => (window.location.href = "/dashboard/recommendations")}
+                    >
                       View Recommendations
                     </Button>
                   </CardContent>
@@ -367,7 +487,12 @@ export default function Dashboard() {
                     <p className="text-sm text-muted-foreground">
                       Check current market prices for crops in your region
                     </p>
-                    <Button className="w-full bg-accent hover:bg-accent/90 text-accent-foreground">Check Prices</Button>
+                    <Button
+                      className="w-full bg-accent hover:bg-accent/90 text-accent-foreground"
+                      onClick={() => (window.location.href = "/dashboard/market")}
+                    >
+                      Check Prices
+                    </Button>
                   </CardContent>
                 </Card>
 

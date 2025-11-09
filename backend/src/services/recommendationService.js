@@ -6,16 +6,19 @@ export const generateRecommendations = async (farmData, weatherData) => {
 
   for (const [cropKey, cropData] of Object.entries(CROPS)) {
     const scores = calculateSuitabilityScores(cropData, farmData, weatherData)
-    const totalScore = Object.values(scores).reduce((a, b) => a + b) / Object.keys(scores).length
+    // Add some randomness to make each crop unique
+    const randomVariation = (Math.random() - 0.5) * 0.15 // ±7.5% variation
+    const totalScore = Object.values(scores).reduce((a, b) => a + b) / Object.keys(scores).length + randomVariation
+    const clampedScore = Math.max(0.2, Math.min(0.95, totalScore)) // Clamp between 20% and 95%
 
-    if (totalScore >= CONFIDENCE_THRESHOLDS.LOW) {
+    if (clampedScore >= CONFIDENCE_THRESHOLDS.LOW) {
       const marketData = await MarketPrice.findOne({ cropType: cropKey })
       const estimatedYield = calculateYield(cropData, scores)
 
       recommendations.push({
         cropType: cropKey,
-        suitabilityScore: Math.round(totalScore * 100),
-        confidence: calculateConfidence(totalScore),
+        suitabilityScore: Math.round(clampedScore * 100),
+        confidence: calculateConfidence(clampedScore),
         reasoning: generateReasoning(cropKey, scores),
         factors: scores,
         benefits: generateBenefits(cropKey, farmData),
@@ -37,44 +40,96 @@ const calculateSuitabilityScores = (cropData, farmData, weatherData) => {
   const market = calculateMarketScore(cropData)
 
   return {
-    soil: Math.min(soil, 1),
-    weather: Math.min(weather, 1),
+    soil: Math.min(soil * 1.2, 1), // Boost soil score slightly
+    weather: Math.min(weather * 1.1, 1), // Boost weather score slightly
     season: Math.min(season, 1),
     market: Math.min(market, 1),
   }
 }
 
 const calculateSoilScore = (cropData, soilData) => {
-  let score = 0.5
+  let score = 0.2 // Lower base score for more variation
 
-  // pH check
-  if (soilData.ph >= cropData.soilPHRange.min && soilData.ph <= cropData.soilPHRange.max) {
-    score += 0.2
+  // pH check - more strict and varied
+  const phOptimal = (cropData.soilPHRange.min + cropData.soilPHRange.max) / 2
+  const phDiff = Math.abs(soilData.ph - phOptimal)
+
+  if (phDiff < 0.3) {
+    score += 0.35 // Perfect pH
+  } else if (phDiff < 0.7) {
+    score += 0.25 // Good pH
+  } else if (phDiff < 1.2) {
+    score += 0.15 // Acceptable pH
+  } else if (phDiff < 2) {
+    score += 0.08 // Poor pH
   }
 
-  // NPK check
-  if (soilData.nitrogen >= SOIL_NPK.NITROGEN.low) score += 0.1
-  if (soilData.phosphorus >= SOIL_NPK.PHOSPHORUS.low) score += 0.1
-  if (soilData.potassium >= SOIL_NPK.POTASSIUM.low) score += 0.1
+  // NPK scoring with more variation
+  const nScore =
+    soilData.nitrogen >= SOIL_NPK.NITROGEN.high
+      ? 0.18
+      : soilData.nitrogen >= SOIL_NPK.NITROGEN.medium
+        ? 0.12
+        : soilData.nitrogen >= SOIL_NPK.NITROGEN.low
+          ? 0.07
+          : 0.02
 
-  return score
+  const pScore =
+    soilData.phosphorus >= SOIL_NPK.PHOSPHORUS.high
+      ? 0.18
+      : soilData.phosphorus >= SOIL_NPK.PHOSPHORUS.medium
+        ? 0.12
+        : soilData.phosphorus >= SOIL_NPK.PHOSPHORUS.low
+          ? 0.07
+          : 0.02
+
+  const kScore =
+    soilData.potassium >= SOIL_NPK.POTASSIUM.high
+      ? 0.18
+      : soilData.potassium >= SOIL_NPK.POTASSIUM.medium
+        ? 0.12
+        : soilData.potassium >= SOIL_NPK.POTASSIUM.low
+          ? 0.07
+          : 0.02
+
+  score += nScore + pScore + kScore
+
+  return Math.min(score, 0.95) // Cap at 95%
 }
 
 const calculateWeatherScore = (cropData, weatherData) => {
-  let score = 0.5
+  let score = 0.2 // Lower base
 
-  if (
+  const tempMid = (cropData.temperatureRange.min + cropData.temperatureRange.max) / 2
+  const tempDiff = Math.abs(weatherData.temperature - tempMid)
+
+  if (tempDiff < 2) {
+    score += 0.4 // Perfect temperature
+  } else if (tempDiff < 5) {
+    score += 0.3 // Very good temperature
+  } else if (tempDiff < 8) {
+    score += 0.2 // Good temperature
+  } else if (
     weatherData.temperature >= cropData.temperatureRange.min &&
     weatherData.temperature <= cropData.temperatureRange.max
   ) {
-    score += 0.25
+    score += 0.12 // Acceptable temperature
   }
 
-  if (weatherData.humidity >= cropData.moistureRange.min && weatherData.humidity <= cropData.moistureRange.max) {
-    score += 0.25
+  const humMid = (cropData.moistureRange.min + cropData.moistureRange.max) / 2
+  const humDiff = Math.abs(weatherData.humidity - humMid)
+
+  if (humDiff < 8) {
+    score += 0.4 // Perfect humidity
+  } else if (humDiff < 15) {
+    score += 0.3 // Very good humidity
+  } else if (humDiff < 25) {
+    score += 0.2 // Good humidity
+  } else if (weatherData.humidity >= cropData.moistureRange.min && weatherData.humidity <= cropData.moistureRange.max) {
+    score += 0.12 // Acceptable humidity
   }
 
-  return score
+  return Math.min(score, 0.95)
 }
 
 const calculateSeasonScore = (cropData, season) => {
@@ -95,9 +150,9 @@ const calculateYield = (cropData, scores) => {
 }
 
 const calculateConfidence = (score) => {
-  if (score >= 0.8) return "high"
-  if (score >= 0.6) return "medium"
-  return "low"
+  if (score >= 0.8) return 0.9
+  if (score >= 0.6) return 0.7
+  return 0.5
 }
 
 const generateReasoning = (cropType, scores) => {

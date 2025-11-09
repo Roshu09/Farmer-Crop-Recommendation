@@ -5,6 +5,7 @@ import DashboardLayout from "@/components/dashboard-layout"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { AlertCircle, Loader, TrendingDown, TrendingUp, Search } from "lucide-react"
 import { Input } from "@/components/ui/input"
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from "recharts"
 
 interface CropPrice {
   id: string
@@ -92,7 +93,7 @@ export default function MarketPage() {
             <Loader className="w-8 h-8 text-primary animate-spin" />
           </div>
         ) : (
-          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
+          <>
             {filteredPrices.length === 0 ? (
               <div className="col-span-full">
                 <Card>
@@ -105,56 +106,114 @@ export default function MarketPage() {
                 </Card>
               </div>
             ) : (
-              filteredPrices.map((crop) => (
-                <Card key={crop.id} className="hover:shadow-md transition-shadow">
-                  <CardHeader className="pb-3">
-                    <div className="flex items-start justify-between">
-                      <div>
-                        <CardTitle className="text-lg">{crop.cropName}</CardTitle>
-                        <CardDescription>Current market rate</CardDescription>
-                      </div>
-                      {crop.trend === "up" ? (
-                        <TrendingUp className="w-5 h-5 text-green-600" />
-                      ) : crop.trend === "down" ? (
-                        <TrendingDown className="w-5 h-5 text-red-600" />
-                      ) : (
-                        <div className="w-5 h-5 text-muted-foreground">—</div>
-                      )}
-                    </div>
+              <>
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Market Price Comparison</CardTitle>
+                    <CardDescription>Current prices across different crops (₹ per kg)</CardDescription>
                   </CardHeader>
-
-                  <CardContent className="space-y-4">
-                    {/* Price */}
-                    <div>
-                      <p className="text-3xl font-bold text-foreground">₹{crop.price}</p>
-                      <p
-                        className={`text-sm font-semibold ${crop.priceChange >= 0 ? "text-green-600" : "text-red-600"}`}
-                      >
-                        {crop.priceChange >= 0 ? "+" : ""}
-                        {crop.priceChange}% this week
-                      </p>
-                    </div>
-
-                    {/* Market Info */}
-                    <div className="grid grid-cols-3 gap-2 text-sm pt-3 border-t border-border">
-                      <div>
-                        <p className="text-xs text-muted-foreground mb-1">Supply</p>
-                        <p className="font-semibold text-foreground">{crop.supply}</p>
-                      </div>
-                      <div>
-                        <p className="text-xs text-muted-foreground mb-1">Demand</p>
-                        <p className="font-semibold text-foreground">{crop.demand}</p>
-                      </div>
-                      <div>
-                        <p className="text-xs text-muted-foreground mb-1">Quality</p>
-                        <p className="font-semibold text-foreground">{crop.quality}</p>
-                      </div>
+                  <CardContent>
+                    <div className="h-80">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <BarChart
+                          data={filteredPrices.map((crop) => ({
+                            name: crop.cropName,
+                            price: crop.price,
+                            change: crop.priceChange,
+                          }))}
+                          margin={{ top: 20, right: 30, left: 20, bottom: 60 }}
+                        >
+                          <CartesianGrid strokeDasharray="3 3" stroke="#e0e0e0" />
+                          <XAxis
+                            dataKey="name"
+                            angle={-45}
+                            textAnchor="end"
+                            height={80}
+                            stroke="#666"
+                            style={{ fontSize: "12px" }}
+                          />
+                          <YAxis
+                            stroke="#666"
+                            style={{ fontSize: "12px" }}
+                            label={{ value: "Price (₹/kg)", angle: -90, position: "insideLeft" }}
+                          />
+                          <Tooltip
+                            contentStyle={{
+                              backgroundColor: "#fff",
+                              border: "1px solid #ccc",
+                              borderRadius: "8px",
+                              padding: "10px",
+                            }}
+                            formatter={(value: number, name: string, props: any) => [
+                              `₹${value}/kg`,
+                              `Change: ${props.payload.change > 0 ? "+" : ""}${props.payload.change}%`,
+                            ]}
+                          />
+                          <Bar dataKey="price" radius={[8, 8, 0, 0]} barSize={30}>
+                            {filteredPrices.map((entry, index) => (
+                              <Cell key={`cell-${index}`} fill="rgba(16, 185, 129, 0.65)" />
+                            ))}
+                          </Bar>
+                        </BarChart>
+                      </ResponsiveContainer>
                     </div>
                   </CardContent>
                 </Card>
-              ))
+
+                {/* Price cards grid */}
+                <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {filteredPrices.map((crop) => (
+                    <Card key={crop.id} className="hover:shadow-md transition-shadow">
+                      <CardHeader className="pb-3">
+                        <div className="flex items-start justify-between">
+                          <div>
+                            <CardTitle className="text-lg">{crop.cropName}</CardTitle>
+                            <CardDescription>Current market rate</CardDescription>
+                          </div>
+                          {crop.trend === "up" ? (
+                            <TrendingUp className="w-5 h-5 text-green-600" />
+                          ) : crop.trend === "down" ? (
+                            <TrendingDown className="w-5 h-5 text-red-600" />
+                          ) : (
+                            <div className="w-5 h-5 text-muted-foreground">—</div>
+                          )}
+                        </div>
+                      </CardHeader>
+
+                      <CardContent className="space-y-4">
+                        {/* Price */}
+                        <div>
+                          <p className="text-3xl font-bold text-foreground">₹{crop.price}/kg</p>
+                          <p
+                            className={`text-sm font-semibold ${crop.priceChange >= 0 ? "text-green-600" : "text-red-600"}`}
+                          >
+                            {crop.priceChange >= 0 ? "+" : ""}
+                            {crop.priceChange}% this week
+                          </p>
+                        </div>
+
+                        {/* Market Info */}
+                        <div className="grid grid-cols-3 gap-2 text-sm pt-3 border-t border-border">
+                          <div>
+                            <p className="text-xs text-muted-foreground mb-1">Supply</p>
+                            <p className="font-semibold text-foreground">{crop.supply}</p>
+                          </div>
+                          <div>
+                            <p className="text-xs text-muted-foreground mb-1">Demand</p>
+                            <p className="font-semibold text-foreground">{crop.demand}</p>
+                          </div>
+                          <div>
+                            <p className="text-xs text-muted-foreground mb-1">Quality</p>
+                            <p className="font-semibold text-foreground">{crop.quality}</p>
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+              </>
             )}
-          </div>
+          </>
         )}
       </div>
     </DashboardLayout>
